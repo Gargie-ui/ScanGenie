@@ -5,13 +5,14 @@ import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const { user, isGuest, isLoading, signIn, signUp, continueAsGuest } = useAuth();
+  const { user, isGuest, isLoading, signIn, signUp, resetPassword, continueAsGuest } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -29,6 +30,29 @@ export default function LoginPage() {
     setError('');
     setSuccess('');
 
+    // Handle Forgot Password submission
+    if (isForgotPassword) {
+      if (!email.trim()) {
+        setError('Please enter your email address.');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const { error: authError } = await resetPassword(email.trim());
+        if (authError) {
+          setError(authError.message);
+        } else {
+          setSuccess('Password reset link sent! Please check your email inbox.');
+        }
+      } catch {
+        setError('An unexpected error occurred. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // Handle Sign In / Sign Up submission
     if (!email.trim() || !password.trim()) {
       setError('Please fill in all fields.');
       return;
@@ -173,10 +197,16 @@ export default function LoginPage() {
             {/* Header */}
             <div className="text-center space-y-1.5">
               <h2 className="text-lg font-bold text-on-surface">
-                {isSignUp ? 'Create Your Account' : 'Welcome Back'}
+                {isForgotPassword
+                  ? 'Reset Your Password'
+                  : isSignUp
+                  ? 'Create Your Account'
+                  : 'Welcome Back'}
               </h2>
               <p className="text-xs text-on-surface-variant">
-                {isSignUp
+                {isForgotPassword
+                  ? "Enter your email address and we'll send you a password reset link."
+                  : isSignUp
                   ? 'Sign up to save your documents and chat history.'
                   : 'Sign in to access your documents and conversations.'}
               </p>
@@ -198,8 +228,8 @@ export default function LoginPage() {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Name field (Shown on Sign Up) */}
-              {isSignUp && (
+              {/* Name field (Shown on Sign Up only) */}
+              {isSignUp && !isForgotPassword && (
                 <div className="space-y-1.5 animate-in fade-in duration-200">
                   <label htmlFor="login-name" className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider flex items-center justify-between">
                     <span>What should we call you?</span>
@@ -221,7 +251,7 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* Email */}
+              {/* Email (Always shown) */}
               <div className="space-y-1.5">
                 <label htmlFor="login-email" className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
                   Email Address
@@ -241,68 +271,105 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Password */}
-              <div className="space-y-1.5">
-                <label htmlFor="login-password" className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
-                  Password
-                </label>
-                <div className="relative group">
-                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-lg group-focus-within:text-primary transition-colors">lock</span>
-                  <input
-                    id="login-password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    disabled={submitting}
-                    autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                    className="w-full pl-11 pr-12 py-3 bg-[#1b1b1f]/50 border border-white/8 focus:border-primary/40 rounded-xl text-sm text-on-surface placeholder-on-surface-variant/30 outline-none transition-all focus:shadow-[0_0_0_3px_rgba(208,188,255,0.08)] disabled:opacity-50"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant/40 hover:text-on-surface-variant transition-colors cursor-pointer"
-                    tabIndex={-1}
-                  >
-                    <span className="material-symbols-outlined text-lg">{showPassword ? 'visibility_off' : 'visibility'}</span>
-                  </button>
+              {/* Password (Hidden in Forgot Password mode) */}
+              {!isForgotPassword && (
+                <div className="space-y-1.5 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="login-password" className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
+                      Password
+                    </label>
+                    {!isSignUp && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsForgotPassword(true);
+                          setError('');
+                          setSuccess('');
+                        }}
+                        className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                      >
+                        Forgot Password?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative group">
+                    <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-lg group-focus-within:text-primary transition-colors">lock</span>
+                    <input
+                      id="login-password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      disabled={submitting}
+                      autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                      className="w-full pl-11 pr-12 py-3 bg-[#1b1b1f]/50 border border-white/8 focus:border-primary/40 rounded-xl text-sm text-on-surface placeholder-on-surface-variant/30 outline-none transition-all focus:shadow-[0_0_0_3px_rgba(208,188,255,0.08)] disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant/40 hover:text-on-surface-variant transition-colors cursor-pointer"
+                      tabIndex={-1}
+                    >
+                      <span className="material-symbols-outlined text-lg">{showPassword ? 'visibility_off' : 'visibility'}</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Submit button */}
               <button
                 type="submit"
-                disabled={submitting || !email.trim() || !password.trim()}
+                disabled={submitting || !email.trim() || (!isForgotPassword && !password.trim())}
                 className="w-full py-3 bg-primary text-on-primary text-sm font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/15 cursor-pointer disabled:opacity-40 disabled:pointer-events-none border border-white/10 mt-2"
               >
                 {submitting ? (
                   <>
                     <span className="material-symbols-outlined text-lg animate-spin">sync</span>
-                    {isSignUp ? 'Creating Account...' : 'Signing In...'}
+                    {isForgotPassword ? 'Sending Email...' : isSignUp ? 'Creating Account...' : 'Signing In...'}
                   </>
                 ) : (
                   <>
-                    <span className="material-symbols-outlined text-lg">{isSignUp ? 'person_add' : 'login'}</span>
-                    {isSignUp ? 'Create Account' : 'Sign In'}
+                    <span className="material-symbols-outlined text-lg">
+                      {isForgotPassword ? 'mark_email_read' : isSignUp ? 'person_add' : 'login'}
+                    </span>
+                    {isForgotPassword ? 'Send Reset Link' : isSignUp ? 'Create Account' : 'Sign In'}
                   </>
                 )}
               </button>
             </form>
 
-            {/* Toggle Sign In / Sign Up */}
-            <p className="text-center text-xs text-on-surface-variant">
-              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-              <button
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setError('');
-                  setSuccess('');
-                }}
-                className="text-primary font-semibold hover:underline cursor-pointer"
-              >
-                {isSignUp ? 'Sign In' : 'Sign Up'}
-              </button>
-            </p>
+            {/* Navigation / Toggle links */}
+            {isForgotPassword ? (
+              <p className="text-center text-xs text-on-surface-variant">
+                Remembered your password?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(false);
+                    setError('');
+                    setSuccess('');
+                  }}
+                  className="text-primary font-semibold hover:underline cursor-pointer"
+                >
+                  Back to Sign In
+                </button>
+              </p>
+            ) : (
+              <p className="text-center text-xs text-on-surface-variant">
+                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setError('');
+                    setSuccess('');
+                  }}
+                  className="text-primary font-semibold hover:underline cursor-pointer"
+                >
+                  {isSignUp ? 'Sign In' : 'Sign Up'}
+                </button>
+              </p>
+            )}
 
             {/* Divider */}
             <div className="flex items-center gap-4">
@@ -313,6 +380,7 @@ export default function LoginPage() {
 
             {/* Continue as Guest */}
             <button
+              type="button"
               onClick={handleGuestAccess}
               disabled={submitting}
               className="w-full py-3 bg-[#1b1b1f]/60 hover:bg-[#25252b]/70 border border-white/8 hover:border-primary/20 text-on-surface-variant hover:text-on-surface text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
