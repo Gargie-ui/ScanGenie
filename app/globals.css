@@ -1,0 +1,271 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-fixed: #e9ddff;
+  --color-surface-tint: #d0bcff;
+  --color-surface: #131317;
+  --color-error-container: #93000a;
+  --color-tertiary-fixed-dim: #ffafd3;
+  --color-surface-container-highest: #353439;
+  --color-inverse-surface: #e4e1e7;
+  --color-surface-bright: #39393d;
+  --color-on-secondary-fixed: #001f26;
+  --color-primary-fixed-dim: #d0bcff;
+  --color-surface-dim: #131317;
+  --color-error: #ffb4ab;
+  --color-on-secondary: #003640;
+  --color-background: #131317;
+  --color-on-error-container: #ffdad6;
+  --color-on-primary-fixed: #23005c;
+  --color-surface-container-high: #2a292e;
+  --color-inverse-on-surface: #303034;
+  --color-on-surface-variant: #cbc3d7;
+  --color-on-tertiary-container: #560038;
+  --color-outline-variant: #494454;
+  --color-primary: #d0bcff;
+  --color-on-background: #e4e1e7;
+  --color-secondary-container: #03b5d3;
+  --color-tertiary: #ffafd3;
+  --color-on-tertiary-fixed-variant: #85145a;
+  --color-secondary-fixed: #acedff;
+  --color-surface-variant: #353439;
+  --color-on-primary-container: #340080;
+  --color-surface-container-low: #1b1b1f;
+  --color-on-primary: #3c0091;
+  --color-surface-container-lowest: #0e0e12;
+  --color-on-surface: #e4e1e7;
+  --color-tertiary-container: #e364a7;
+  --color-surface-container: #1f1f23;
+  --color-inverse-primary: #6d3bd7;
+  --color-on-secondary-fixed-variant: #004e5c;
+  --color-on-error: #690005;
+  --color-on-secondary-container: #00424e;
+  --color-on-primary-fixed-variant: #5516be;
+  --color-on-tertiary: #620040;
+  --color-tertiary-fixed: #ffd8e7;
+  --color-primary-container: #a078ff;
+  --color-secondary: #4cd7f6;
+  --color-secondary-fixed-dim: #4cd7f6;
+  --color-outline: #958ea0;
+  --color-on-tertiary-fixed: #3d0026;
+  
+  --font-display: "Geist", sans-serif;
+  --font-headline-lg-mobile: "Geist", sans-serif;
+  --font-label-md: "Geist", sans-serif;
+  --font-body-lg: "Geist", sans-serif;
+  --font-headline-lg: "Geist", sans-serif;
+  --font-body-md: "Geist", sans-serif;
+  --font-code: "Geist Mono", monospace;
+  --font-headline-md: "Geist", sans-serif;
+}
+
+body {
+  background-color: #0a0a0d;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(208, 188, 255, 0.12) 0px, transparent 45%),
+    radial-gradient(at 100% 100%, rgba(76, 215, 246, 0.08) 0px, transparent 45%),
+    radial-gradient(at 50% 50%, rgba(255, 175, 211, 0.04) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: var(--color-on-surface);
+  font-family: var(--font-body-md);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(149, 142, 160, 0.2);
+  border-radius: 10px;
+}
+.glass-card {
+  background: rgba(22, 22, 28, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(28px);
+  box-shadow: 
+    0 20px 40px -15px rgba(0, 0, 0, 0.6), 
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.glass-card-interactive {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card-interactive:hover {
+  background: rgba(26, 26, 32, 0.65);
+  border-color: rgba(208, 188, 255, 0.2);
+  box-shadow: 
+    0 30px 60px -15px rgba(0, 0, 0, 0.75), 
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 30px 2px rgba(208, 188, 255, 0.04);
+}
+
+/* ─── Prose AI: Markdown Styles for Chat Responses ─── */
+
+.prose-ai {
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.prose-ai > *:first-child {
+  margin-top: 0;
+}
+
+.prose-ai > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Headings */
+.prose-ai h1,
+.prose-ai h2,
+.prose-ai h3,
+.prose-ai h4 {
+  font-weight: 700;
+  color: var(--color-on-surface);
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  line-height: 1.35;
+}
+
+.prose-ai h1 { font-size: 1.2em; }
+.prose-ai h2 { font-size: 1.1em; }
+.prose-ai h3 { font-size: 1.05em; color: var(--color-primary); }
+.prose-ai h4 { font-size: 1em; color: var(--color-on-surface-variant); }
+
+/* Paragraphs */
+.prose-ai p {
+  margin-top: 0.6em;
+  margin-bottom: 0.6em;
+}
+
+/* Bold & Italic */
+.prose-ai strong {
+  font-weight: 700;
+  color: var(--color-on-surface);
+}
+.prose-ai em {
+  font-style: italic;
+  color: var(--color-on-surface-variant);
+}
+
+/* Lists */
+.prose-ai ul,
+.prose-ai ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.5em;
+}
+.prose-ai ul {
+  list-style-type: disc;
+}
+.prose-ai ol {
+  list-style-type: decimal;
+}
+.prose-ai li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+  padding-left: 0.25em;
+}
+.prose-ai li::marker {
+  color: var(--color-primary);
+}
+.prose-ai li > ul,
+.prose-ai li > ol {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+/* Inline code */
+.prose-ai code:not(pre code) {
+  font-family: var(--font-code);
+  font-size: 0.88em;
+  background: rgba(208, 188, 255, 0.1);
+  border: 1px solid rgba(208, 188, 255, 0.15);
+  color: var(--color-primary);
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* Code blocks */
+.prose-ai pre {
+  font-family: var(--font-code);
+  font-size: 0.85em;
+  background: rgba(14, 14, 18, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 1em 1.25em;
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+  overflow-x: auto;
+  line-height: 1.6;
+}
+.prose-ai pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-on-surface);
+  font-size: inherit;
+}
+
+/* Blockquotes */
+.prose-ai blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding: 0.5em 1em;
+  margin: 0.75em 0;
+  background: rgba(208, 188, 255, 0.04);
+  border-radius: 0 8px 8px 0;
+  color: var(--color-on-surface-variant);
+  font-style: italic;
+}
+.prose-ai blockquote p {
+  margin: 0.25em 0;
+}
+
+/* Tables */
+.prose-ai table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.9em;
+}
+.prose-ai thead th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--color-primary);
+  border-bottom: 2px solid rgba(208, 188, 255, 0.2);
+  padding: 0.5em 0.75em;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.prose-ai tbody td {
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--color-on-surface);
+}
+.prose-ai tbody tr:hover {
+  background: rgba(208, 188, 255, 0.03);
+}
+
+/* Horizontal rules */
+.prose-ai hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 1.25em 0;
+}
+
+/* Links */
+.prose-ai a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(208, 188, 255, 0.3);
+  transition: text-decoration-color 0.2s;
+}
+.prose-ai a:hover {
+  text-decoration-color: var(--color-primary);
+}
+
