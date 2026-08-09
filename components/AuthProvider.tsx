@@ -11,6 +11,7 @@ interface AuthState {
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signUp: (email: string, password: string, name?: string) => Promise<{ data: any; error: AuthError | null }>;
+  resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   continueAsGuest: (guestName?: string) => void;
 }
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthState>({
   isLoading: true,
   signIn: async () => ({ error: null }),
   signUp: async () => ({ data: null, error: null }),
+  resetPassword: async () => ({ error: null }),
   signOut: async () => {},
   continueAsGuest: () => {},
 });
@@ -102,6 +104,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     return { data, error };
   }, []);
 
+  const resetPassword = useCallback(async (email: string) => {
+    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined;
+    const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email, { redirectTo });
+    return { error };
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabaseBrowser.auth.signOut();
     setUser(null);
@@ -123,7 +131,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const userName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
   return (
-    <AuthContext.Provider value={{ user, userName, isGuest, isLoading, signIn, signUp, signOut, continueAsGuest }}>
+    <AuthContext.Provider value={{ user, userName, isGuest, isLoading, signIn, signUp, resetPassword, signOut, continueAsGuest }}>
       {children}
     </AuthContext.Provider>
   );
