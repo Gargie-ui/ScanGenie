@@ -10,7 +10,7 @@ interface AuthState {
   isGuest: boolean;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signUp: (email: string, password: string, name?: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string, name?: string) => Promise<{ data: any; error: AuthError | null }>;
   signOut: () => Promise<void>;
   continueAsGuest: (guestName?: string) => void;
 }
@@ -21,7 +21,7 @@ const AuthContext = createContext<AuthState>({
   isGuest: false,
   isLoading: true,
   signIn: async () => ({ error: null }),
-  signUp: async () => ({ error: null }),
+  signUp: async () => ({ data: null, error: null }),
   signOut: async () => {},
   continueAsGuest: () => {},
 });
