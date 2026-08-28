@@ -1,0 +1,16 @@
+name: Supabase Health Check
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  check-supabase:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Supabase
+        run: |
+          curl -f "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
