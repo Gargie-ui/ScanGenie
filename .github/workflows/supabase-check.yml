@@ -1,17 +1,29 @@
-name: Supabase Health Check
+name: Supabase Keep-Alive
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    # Runs every 3 days at 00:00 UTC
+    - cron: '0 0 */3 * *'
   workflow_dispatch:
 
 jobs:
-  check-supabase:
+  ping-db:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check Supabase Database
+      - name: Insert Ping to Supabase Database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          curl -f "${{ secrets.SUPABASE_URL }}/rest/v1/documents?select=id&limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SUPABASE_URL/rest/v1/ping_logs" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d '{}')
+          
+          echo "Supabase HTTP Response Code: $RESPONSE"
+          if [ "$RESPONSE" -ne 201 ] && [ "$RESPONSE" -ne 200 ]; then
+            echo "Failed to ping Supabase database. HTTP Code: $RESPONSE"
+            exit 1
+          fi
