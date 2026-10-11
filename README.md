@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
     file_type TEXT NOT NULL,
     word_count INTEGER DEFAULT 0,
     page_count INTEGER DEFAULT 1,
+    user_id UUID,
     uploaded_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -95,6 +96,7 @@ CREATE TABLE IF NOT EXISTS public.document_chunks (
 CREATE TABLE IF NOT EXISTS public.chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
+    user_id UUID,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -107,6 +109,15 @@ CREATE TABLE IF NOT EXISTS public.messages (
     citations JSONB,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add columns when upgrading a database created with an earlier schema.
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS user_id UUID;
+ALTER TABLE public.chats ADD COLUMN IF NOT EXISTS user_id UUID;
+
+-- Uploaded originals are stored in this private bucket (served through the API).
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('documents', 'documents', false)
+ON CONFLICT (id) DO NOTHING;
 
 -- 6. Disable Row Level Security (RLS) for serverless access
 ALTER TABLE public.documents DISABLE ROW LEVEL SECURITY;

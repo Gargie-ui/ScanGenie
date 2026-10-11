@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# model cache
+/.onnx_cache/
+
 # production
 /build
 

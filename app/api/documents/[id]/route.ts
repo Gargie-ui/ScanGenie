@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { promises as fs } from 'fs';
-import path from 'path';
 
 /**
  * DELETE /api/documents/[id]
- * Deletes a document, its local file, and all associated chunks from Supabase.
+ * Deletes a document, its stored file, and all associated chunks from Supabase.
  */
 export async function DELETE(
   req: NextRequest,
@@ -21,7 +19,7 @@ export async function DELETE(
     // 1. Fetch document metadata from Supabase
     const { data: docData, error: fetchError } = await supabase
       .from('documents')
-      .select('filename')
+      .select('id')
       .eq('id', docId)
       .single();
 
@@ -29,16 +27,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    const filename = docData.filename;
-    const storedFilename = `${docId}-${filename}`;
-    const filePath = path.join(process.cwd(), 'uploads', storedFilename);
-
-    // 2. Delete local file from disk (silently ignore if not found)
-    try {
-      await fs.unlink(filePath);
-      console.log(`Deleted file: ${filePath}`);
-    } catch (fsErr: any) {
-      console.warn(`File delete warning: ${fsErr.message}`);
+    // 2. Delete the stored original before removing its metadata.
+    const { error: storageError } = await supabase.storage.from('documents').remove([docId]);
+    if (storageError) {
+      throw storageError;
     }
 
     // 3. Delete document from Supabase (cascading deletes will handle document_chunks)

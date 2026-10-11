@@ -186,9 +186,14 @@ Standalone Search Query:`;
 
 IMPORTANT RULES:
 1. ONLY answer based on the provided document context. Do not use outside knowledge.
-2. If the answer is not in the documents, clearly state: "This information is not available in the provided documents."
-3. Always cite your sources in the text using format: (Source: document_name.pdf, page X). Mention the sources directly corresponding to your points.
-4. If multiple documents are relevant, cite them appropriately.
+2. If the answer is NOT available or cannot be answered from the provided documents:
+   - State clearly, politely, and helpfully: "This information is not available in the provided documents."
+   - You may briefly mention what topics the document does cover if helpful, but DO NOT guess, speculate, or hallucinate.
+   - CRITICAL: DO NOT include ANY source citations (e.g., do NOT write "(Source: ...)") when the answer is not available in the documents.
+3. If the answer IS available in the documents:
+   - Provide a comprehensive, accurate answer.
+   - Always cite your sources in the text using format: (Source: exact_filename, page X). You MUST use the exact filename and exact page number stated in the "[Document #N] Filename: ..., Page: X" header above each snippet. Only cite the specific page that directly provided that fact.
+4. If multiple points originate from different pages, cite each specific page accurately at the corresponding point.
 5. Keep your response concise but comprehensive.
 6. Use rich Markdown formatting to make your response well-structured and easy to read:
    - Use **bold** for key terms and important concepts.
@@ -214,9 +219,23 @@ Answer:`;
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Send citations immediately as the first chunk in SSE format
-          const citationsChunk = `event: citations\ndata: ${JSON.stringify(citations)}\n\n`;
-          controller.enqueue(encoder.encode(citationsChunk));
+          // If no chunks were retrieved at all, return immediate proper response without citations
+          if (matchedChunks.length === 0) {
+            const noInfoMsg = "This information is not available in the provided documents. Please ensure the relevant document is uploaded and selected in the sidebar.";
+            controller.enqueue(encoder.encode(`event: text\ndata: ${JSON.stringify({ text: noInfoMsg })}\n\n`));
+            controller.enqueue(encoder.encode(`event: citations\ndata: []\n\n`));
+
+            if (chat_id) {
+              await supabase.from('messages').insert({
+                chat_id: chat_id,
+                role: 'model',
+                content: noInfoMsg,
+                citations: null,
+              });
+            }
+            controller.close();
+            return;
+          }
 
           const responseStream = await ai.models.generateContentStream({
             model: 'gemini-2.5-flash',
@@ -238,13 +257,44 @@ Answer:`;
             }
           }
 
+          // Check if the model stated that the information is unavailable
+          const lowerText = receivedText.toLowerCase();
+          const isUnavailable =
+            lowerText.includes('not available in the provided documents') ||
+            lowerText.includes('not found in the provided documents') ||
+            lowerText.includes('not mentioned in the provided documents') ||
+            lowerText.includes('not provided in the documents') ||
+            lowerText.includes('do not contain this information') ||
+            lowerText.includes('does not contain this information') ||
+            lowerText.includes('cannot find this information in the documents') ||
+            lowerText.includes('neither the provided documents nor') ||
+            lowerText.includes('none of the provided documents contain');
+
+          let finalCitations: typeof citations = [];
+
+          if (isUnavailable) {
+            // If information is not available, citations MUST NOT be returned!
+            finalCitations = [];
+          } else {
+            // When information is available, filter citations to only those actually cited in the text
+            const referenced = citations.filter((chunk) => {
+              const pageRegex = new RegExp(`page\\s+${chunk.pageNumber}\\b`, 'i');
+              return pageRegex.test(receivedText);
+            });
+            finalCitations = referenced.length > 0 ? referenced : citations;
+          }
+
+          // Send citations event after text generation completes
+          const citationsChunk = `event: citations\ndata: ${JSON.stringify(finalCitations)}\n\n`;
+          controller.enqueue(encoder.encode(citationsChunk));
+
           // 8. Save assistant's answer and citations to the database
           if (chat_id && receivedText.trim()) {
             const { error: assistantMsgErr } = await supabase.from('messages').insert({
               chat_id: chat_id,
               role: 'model',
               content: receivedText,
-              citations: citations,
+              citations: finalCitations.length > 0 ? finalCitations : null,
             });
 
             if (assistantMsgErr) {

@@ -3,9 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { parseDocument } from '@/lib/parser';
 import { chunkPages } from '@/lib/chunker';
-import { generateEmbedding } from '@/lib/embedding';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { generateEmbeddings } from '@/lib/embedding';
 import crypto from 'crypto';
 
 export const maxDuration = 300; // 5 minutes max execution time for long uploads
@@ -83,30 +81,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Document appears to be empty or has no readable text.' }, { status: 422 });
     }
 
-    // 2. Setup folders and file write
-    const uploadDir = path.join(process.cwd(), 'uploads');
-    await fs.mkdir(uploadDir, { recursive: true });
-
     // Generate a unique document ID
     const docId = crypto.randomUUID();
 
     const fileExtension = filename.split('.').pop() || '';
-    const storedFilename = `${docId}-${filename}`;
-    const filePath = path.join(uploadDir, storedFilename);
 
-    // Save actual file to local uploads directory
-    await fs.writeFile(filePath, buffer);
-
-    // 3. Generate token chunks
+    // 2. Generate token chunks
     const chunks = await chunkPages(pages);
 
-    // 4. Calculate stats
+    // 3. Calculate stats
     let totalWordCount = 0;
     pages.forEach((page) => {
       totalWordCount += page.text.split(/\s+/).filter(Boolean).length;
     });
 
-    // 5. Generate embeddings in sequential batches (ONNX runtime is single-threaded,
+    // 4. Generate embeddings in sequential batches (ONNX runtime is single-threaded,
     //    so concurrent calls just queue up and add overhead)
     console.log(`Generating embeddings for ${chunks.length} chunks...`);
     const BATCH_SIZE = 10;
@@ -114,24 +103,44 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.all(
-        batch.map(async (chunk) => {
-          const embedding = await generateEmbedding(chunk.content);
-          return {
-            id: crypto.randomUUID(),
-            document_id: docId,
-            chunk_index: chunk.chunkIndex,
-            content: chunk.content,
-            embedding,
-            metadata: {
-              pageNumber: chunk.pageNumber,
-              filename: filename,
-            },
-          };
-        })
-      );
+      const embeddings = await generateEmbeddings(batch.map((chunk) => chunk.content));
+      const batchResults = batch.map((chunk, index) => ({
+        id: crypto.randomUUID(),
+        document_id: docId,
+        chunk_index: chunk.chunkIndex,
+        content: chunk.content,
+        embedding: embeddings[index],
+        metadata: {
+          pageNumber: chunk.pageNumber,
+          filename,
+        },
+      }));
       resolvedChunks.push(...batchResults);
       console.log(`  Embedded ${Math.min(i + BATCH_SIZE, chunks.length)}/${chunks.length} chunks`);
+    }
+
+    // 5. Store the original outside the serverless function's ephemeral filesystem.
+    let { error: storageError } = await supabase.storage
+      .from('documents')
+      .upload(docId, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+      });
+
+    if (storageError && (storageError.message?.includes('Bucket not found') || (storageError as any).code === 'NoSuchBucket')) {
+      console.warn("Storage bucket 'documents' not found. Creating bucket automatically...");
+      await supabase.storage.createBucket('documents', { public: true, fileSizeLimit: 52428800 });
+      const retry = await supabase.storage
+        .from('documents')
+        .upload(docId, buffer, {
+          contentType: file.type || 'application/octet-stream',
+          upsert: false,
+        });
+      storageError = retry.error;
+    }
+
+    if (storageError) {
+      throw storageError;
     }
 
     // 6. Insert metadata and chunks into Supabase
@@ -149,6 +158,10 @@ export async function POST(req: NextRequest) {
       });
 
     if (docError) {
+      const { error: cleanupError } = await supabase.storage.from('documents').remove([docId]);
+      if (cleanupError) {
+        console.error('Failed to clean up uploaded document after metadata insert failure:', cleanupError);
+      }
       throw docError;
     }
 
@@ -159,7 +172,14 @@ export async function POST(req: NextRequest) {
 
     if (chunkError) {
       // Cleanup the document record if chunk insertion fails
-      await supabase.from('documents').delete().eq('id', docId);
+      const { error: documentCleanupError } = await supabase.from('documents').delete().eq('id', docId);
+      if (documentCleanupError) {
+        console.error('Failed to clean up document metadata after chunk insert failure:', documentCleanupError);
+      }
+      const { error: storageCleanupError } = await supabase.storage.from('documents').remove([docId]);
+      if (storageCleanupError) {
+        console.error('Failed to clean up uploaded document after chunk insert failure:', storageCleanupError);
+      }
       throw chunkError;
     }
 

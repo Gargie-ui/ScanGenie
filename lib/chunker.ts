@@ -157,8 +157,9 @@ export async function chunkPages(
   chunkOverlap = 40
 ): Promise<ChunkedSegment[]> {
   const tokenizer = await getTokenizer();
-  // tokenize() returns word-piece tokens WITHOUT [CLS]/[SEP]
-  const count: CountFn = (text) => tokenizer.tokenize(text).length;
+  // Exclude [CLS]/[SEP] so counts match the embedding model's content limit.
+  const count: CountFn = (text) =>
+    tokenizer(text, { add_special_tokens: false }).input_ids.data.length;
 
   const chunks: ChunkedSegment[] = [];
   let overallChunkIndex = 0;
