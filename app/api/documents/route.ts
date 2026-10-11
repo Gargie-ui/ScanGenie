@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     await fs.writeFile(filePath, buffer);
 
     // 3. Generate token chunks
-    const chunks = chunkPages(pages, 500, 50);
+    const chunks = await chunkPages(pages);
 
     // 4. Calculate stats
     let totalWordCount = 0;
