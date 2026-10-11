@@ -1,12 +1,32 @@
-import { getEncoding } from 'js-tiktoken';
+import { AutoTokenizer } from '@xenova/transformers';
 
-let encoder: any = null;
+/**
+ * Token-aware, structure-aware chunker aligned with the embedding model.
+ *
+ * Fixes vs. the old version:
+ *  1. Tokens are counted with MiniLM's OWN tokenizer (not cl100k), so a chunk
+ *     that is "200 tokens" here is 200 tokens to the embedding model too.
+ *  2. Default chunk size is 200 (MiniLM truncates at 256 incl. 2 special
+ *     tokens), so no chunk tail is silently dropped from its embedding.
+ *  3. Text is always split into sentence blocks, so overlap actually works
+ *     (before, a long trailing paragraph meant zero overlap).
+ *  4. Sentence splitting uses Intl.Segmenter instead of a naive regex
+ *     (better on "e.g.", "3.5", decimals, etc.).
+ *  5. Oversized sentences are hard-split by words, never mid-word.
+ *
+ * NOTE: chunkPages is now async (the tokenizer loads asynchronously).
+ * Callers must: `const chunks = await chunkPages(pages);`
+ */
 
-function getEncoder() {
-  if (!encoder) {
-    encoder = getEncoding('cl100k_base');
+const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
+
+// Loaded once and reused across requests (warm serverless instances).
+let tokenizerPromise: Promise<any> | null = null;
+function getTokenizer() {
+  if (!tokenizerPromise) {
+    tokenizerPromise = AutoTokenizer.from_pretrained(MODEL_ID);
   }
-  return encoder;
+  return tokenizerPromise;
 }
 
 export interface TextPage {
@@ -21,16 +41,125 @@ export interface ChunkedSegment {
   chunkIndex: number;
 }
 
+interface Block {
+  text: string;
+  tokens: number;
+  startsParagraph: boolean; // controls how blocks are re-joined
+}
+
+type CountFn = (text: string) => number;
+
+// ---------- sentence splitting ----------
+
+const segmenter =
+  typeof Intl !== 'undefined' && 'Segmenter' in Intl
+    ? new (Intl as any).Segmenter('en', { granularity: 'sentence' })
+    : null;
+
+function splitSentences(paragraph: string): string[] {
+  if (segmenter) {
+    return Array.from(segmenter.segment(paragraph) as Iterable<{ segment: string }>)
+      .map((s) => s.segment.trim())
+      .filter(Boolean);
+  }
+  // Fallback if Intl.Segmenter is unavailable
+  return paragraph
+    .split(/(?<=[.?!])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// ---------- hard split for oversized sentences ----------
+
+function hardSplit(sentence: string, chunkSize: number, count: CountFn): string[] {
+  const parts: string[] = [];
+  let current: string[] = [];
+  let currentTokens = 0;
+
+  const flush = () => {
+    if (current.length) {
+      parts.push(current.join(' '));
+      current = [];
+      currentTokens = 0;
+    }
+  };
+
+  for (const word of sentence.split(/\s+/).filter(Boolean)) {
+    const wordTokens = count(word);
+
+    // Pathological token (e.g. giant URL / base64): slice by characters.
+    if (wordTokens > chunkSize) {
+      flush();
+      const step = chunkSize * 3; // ~3 chars/token as a safe estimate
+      for (let i = 0; i < word.length; i += step) {
+        parts.push(word.slice(i, i + step));
+      }
+      continue;
+    }
+
+    if (currentTokens + wordTokens > chunkSize) flush();
+    current.push(word);
+    currentTokens += wordTokens;
+  }
+  flush();
+  return parts;
+}
+
+// ---------- page -> blocks ----------
+
+function buildBlocks(pageText: string, chunkSize: number, count: CountFn): Block[] {
+  let paragraphs = pageText.split(/\r?\n\s*\r?\n/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length <= 1) {
+    // PDFs often have single newlines only
+    paragraphs = pageText.split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
+  }
+
+  const blocks: Block[] = [];
+  for (const paragraph of paragraphs) {
+    let first = true;
+    for (const sentence of splitSentences(paragraph)) {
+      const tokens = count(sentence);
+      if (tokens <= chunkSize) {
+        blocks.push({ text: sentence, tokens, startsParagraph: first });
+        first = false;
+      } else {
+        for (const part of hardSplit(sentence, chunkSize, count)) {
+          blocks.push({ text: part, tokens: count(part), startsParagraph: first });
+          first = false;
+        }
+      }
+    }
+  }
+  return blocks;
+}
+
+function joinBlocks(blocks: Block[]): string {
+  let out = '';
+  blocks.forEach((b, i) => {
+    if (i === 0) out = b.text;
+    else out += (b.startsParagraph ? '\n\n' : ' ') + b.text;
+  });
+  return out;
+}
+
+// ---------- main ----------
+
 /**
- * Splits text pages into semantically bounded chunks (paragraphs/sentences)
- * that do not exceed the target token size, incorporating overlap.
+ * Splits pages into chunks that:
+ *  - never exceed `chunkSize` MiniLM tokens (when possible),
+ *  - respect paragraph/sentence boundaries,
+ *  - never cross a page boundary (exact page citations),
+ *  - overlap by whole sentences totalling <= `chunkOverlap` tokens.
  */
-export function chunkPages(
+export async function chunkPages(
   pages: TextPage[],
-  chunkSize = 500,
-  chunkOverlap = 50
-): ChunkedSegment[] {
-  const enc = getEncoder();
+  chunkSize = 200,
+  chunkOverlap = 40
+): Promise<ChunkedSegment[]> {
+  const tokenizer = await getTokenizer();
+  // tokenize() returns word-piece tokens WITHOUT [CLS]/[SEP]
+  const count: CountFn = (text) => tokenizer.tokenize(text).length;
+
   const chunks: ChunkedSegment[] = [];
   let overallChunkIndex = 0;
 
@@ -38,91 +167,44 @@ export function chunkPages(
     const pageText = page.text.trim();
     if (!pageText) continue;
 
-    // 1. Break page into paragraph blocks
-    let rawParagraphs = pageText.split(/\r?\n\r?\n/).map(p => p.trim()).filter(Boolean);
-    if (rawParagraphs.length <= 1) {
-      rawParagraphs = pageText.split(/\r?\n/).map(p => p.trim()).filter(Boolean);
-    }
-
-    // 2. Prepare sub-blocks (split too-large paragraphs into sentences)
-    const blocks: { text: string; tokens: number }[] = [];
-    for (const paragraph of rawParagraphs) {
-      const paragraphTokens = enc.encode(paragraph).length;
-
-      if (paragraphTokens <= chunkSize) {
-        blocks.push({ text: paragraph, tokens: paragraphTokens });
-      } else {
-        // Split long paragraphs into sentence blocks using lookbehind to retain punctuation
-        const sentences = paragraph.split(/(?<=[.?!])\s+/).map(s => s.trim()).filter(Boolean);
-        for (const sentence of sentences) {
-          const sentenceTokens = enc.encode(sentence).length;
-          
-          if (sentenceTokens <= chunkSize) {
-            blocks.push({ text: sentence, tokens: sentenceTokens });
-          } else {
-            // Force-split sentences that are extremely long by token count
-            const tokens = enc.encode(sentence);
-            let start = 0;
-            while (start < tokens.length) {
-              const end = Math.min(start + chunkSize, tokens.length);
-              const partTokens = tokens.slice(start, end);
-              const partText = enc.decode(partTokens);
-              blocks.push({ text: partText.trim(), tokens: partTokens.length });
-              start += chunkSize;
-            }
-          }
-        }
-      }
-    }
-
-    // 3. Accumulate blocks into chunks with token-bounded block overlap
+    const blocks = buildBlocks(pageText, chunkSize, count);
     let currentIndex = 0;
+
     while (currentIndex < blocks.length) {
       let currentTokens = 0;
-      const chunkBlocks: string[] = [];
       let endIndex = currentIndex;
 
-      // Add blocks until adding the next would exceed the chunkSize limit
+      // Greedily pack blocks until the next one would overflow
       while (endIndex < blocks.length) {
         const block = blocks[endIndex];
-        if (currentTokens + block.tokens > chunkSize && chunkBlocks.length > 0) {
-          break;
-        }
-        chunkBlocks.push(block.text);
+        if (currentTokens + block.tokens > chunkSize && endIndex > currentIndex) break;
         currentTokens += block.tokens;
         endIndex++;
       }
 
+      const chunkBlocks = blocks.slice(currentIndex, endIndex);
       chunks.push({
-        content: chunkBlocks.join('\n\n'),
+        content: joinBlocks(chunkBlocks),
         tokenCount: currentTokens,
         pageNumber: page.pageNumber,
         chunkIndex: overallChunkIndex++,
       });
 
-      if (endIndex >= blocks.length) {
-        break;
-      }
+      if (endIndex >= blocks.length) break;
 
-      // Calculate next starting index using block overlap
-      let nextStartIndex = endIndex;
+      // Walk backwards to pick trailing sentences for overlap.
+      // `i > currentIndex` guarantees forward progress (no infinite loop).
+      let nextStart = endIndex;
       let overlapTokens = 0;
-
-      for (let i = endIndex - 1; i >= currentIndex; i--) {
+      for (let i = endIndex - 1; i > currentIndex; i--) {
         if (overlapTokens + blocks[i].tokens <= chunkOverlap) {
           overlapTokens += blocks[i].tokens;
-          nextStartIndex = i;
+          nextStart = i;
         } else {
           break;
         }
       }
-
-      // Avoid infinite loops if overlap size causes zero forward progress
-      if (nextStartIndex === currentIndex) {
-        currentIndex = endIndex;
-      } else {
-        currentIndex = nextStartIndex;
-      }
+      currentIndex = nextStart;
     }
   }
 
