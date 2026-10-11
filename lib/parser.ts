@@ -1,4 +1,4 @@
-import { PDFParse } from 'pdf-parse';
+const { PDFParse } = await import('pdf-parse');
 import mammoth from 'mammoth';
 import { TextPage } from './chunker';
 import path from 'path';
