@@ -136,7 +136,7 @@ Standalone Search Query:`;
       const { data, error: dbError } = await supabase.rpc('match_document_chunks', {
         query_embedding: queryEmbedding,
         query_text: searchPhrase,
-        match_threshold: 0.1,
+        match_threshold: 0.25,
         match_count: 5,
         filter_document_ids: effectiveDocIds,
       });
